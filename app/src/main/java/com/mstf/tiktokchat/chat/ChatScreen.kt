@@ -1,6 +1,9 @@
 package com.mstf.tiktokchat.chat
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,13 +34,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -71,6 +84,10 @@ fun ChatScreen() {
     val listState = rememberLazyListState()
     var messageCounter by remember { mutableStateOf(5) }
 
+    var selectedMessageId by remember { mutableStateOf<String?>(null) }
+    val bubblePositions = remember { mutableStateMapOf<String, Rect>() }
+    var overlayPosition by remember { mutableStateOf(Offset.Zero) }
+
     // Scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -78,106 +95,143 @@ fun ChatScreen() {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Message list
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-        ) {
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-            itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                val isNewGroup = index == 0 || messages[index - 1].isMine != message.isMine
-                val isLastInGroup = index == messages.lastIndex || messages[index + 1].isMine != message.isMine
-                MessageBubble(
-                    message = message,
-                    showAvatar = !message.isMine && isLastInGroup,
-                    modifier = Modifier.padding(top = if (isNewGroup) 12.dp else 2.dp)
-                )
-            }
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-        }
-
-        // Input bar
-        Surface(
-            shadowElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Message list
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .padding(horizontal = 8.dp)
             ) {
-                // Sender toggle
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Send as:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    FilterChip(
-                        selected = senderIsMe,
-                        onClick = { senderIsMe = true },
-                        label = { Text("Me") }
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    FilterChip(
-                        selected = !senderIsMe,
-                        onClick = { senderIsMe = false },
-                        label = { Text("Alice") }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+                itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
+                    val isNewGroup = index == 0 || messages[index - 1].isMine != message.isMine
+                    val isLastInGroup = index == messages.lastIndex || messages[index + 1].isMine != message.isMine
+                    MessageBubble(
+                        message = message,
+                        showAvatar = !message.isMine && isLastInGroup,
+                        onLongPress = { selectedMessageId = message.id },
+                        onPositioned = { rect -> bubblePositions[message.id] = rect },
+                        modifier = Modifier.padding(top = if (isNewGroup) 12.dp else 2.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+            }
 
-                // Text field + send button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+            // Input bar
+            Surface(
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        placeholder = { Text("Message...") },
-                        modifier = Modifier.weight(1f),
-                        maxLines = 4
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = {
-                            val text = inputText.trim()
-                            if (text.isNotEmpty()) {
-                                messages.add(
-                                    ChatMessage(
-                                        id = messageCounter.toString(),
-                                        text = text,
-                                        isMine = senderIsMe,
-                                        senderName = if (senderIsMe) "Me" else "Alice"
-                                    )
-                                )
-                                inputText = ""
-                                messageCounter++
-                            }
-                        }
+                    // Sender toggle
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "Send",
-                            tint = MaterialTheme.colorScheme.primary
+                        Text(
+                            text = "Send as:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        FilterChip(
+                            selected = senderIsMe,
+                            onClick = { senderIsMe = true },
+                            label = { Text("Me") }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        FilterChip(
+                            selected = !senderIsMe,
+                            onClick = { senderIsMe = false },
+                            label = { Text("Alice") }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Text field + send button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            placeholder = { Text("Message...") },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 4
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(
+                            onClick = {
+                                val text = inputText.trim()
+                                if (text.isNotEmpty()) {
+                                    messages.add(
+                                        ChatMessage(
+                                            id = messageCounter.toString(),
+                                            text = text,
+                                            isMine = senderIsMe,
+                                            senderName = if (senderIsMe) "Me" else "Alice"
+                                        )
+                                    )
+                                    inputText = ""
+                                    messageCounter++
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Send",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
         }
+
+        // Spotlight overlay
+        if (selectedMessageId != null) {
+            val cutout = bubblePositions[selectedMessageId]
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { overlayPosition = it.positionInWindow() }
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawBehind {
+                        if (cutout != null) {
+                            drawRect(Color.White.copy(alpha = 0.5f))
+                            drawRect(
+                                color = Color.Transparent,
+                                topLeft = Offset(
+                                    cutout.left - overlayPosition.x,
+                                    cutout.top - overlayPosition.y
+                                ),
+                                size = Size(cutout.width, cutout.height),
+                                blendMode = BlendMode.Clear
+                            )
+                        }
+                    }
+                    .clickable { selectedMessageId = null }
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: ChatMessage, showAvatar: Boolean, modifier: Modifier = Modifier) {
+private fun MessageBubble(
+    message: ChatMessage,
+    showAvatar: Boolean,
+    onLongPress: () -> Unit,
+    onPositioned: (Rect) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val bubbleColor = if (message.isMine) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -206,7 +260,17 @@ private fun MessageBubble(message: ChatMessage, showAvatar: Boolean, modifier: M
     }
 
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val pos = coordinates.positionInWindow()
+                val size = coordinates.size
+                onPositioned(Rect(pos.x, pos.y, pos.x + size.width, pos.y + size.height))
+            }
+            .combinedClickable(
+                onClick = {},
+                onLongClick = onLongPress
+            ),
         horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start
     ) {
         // Avatar area for other person (left side) — reserve space even when hidden
