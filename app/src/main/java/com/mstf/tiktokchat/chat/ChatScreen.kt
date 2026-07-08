@@ -1,5 +1,7 @@
 package com.mstf.tiktokchat.chat
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -93,6 +95,16 @@ fun ChatScreen() {
     val bubblePositions = remember { mutableStateMapOf<String, Rect>() }
     var overlayPosition by remember { mutableStateOf(Offset.Zero) }
     val reactions = remember { mutableStateMapOf<String, String>() }
+
+    val spotlightProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(selectedMessageId) {
+        if (selectedMessageId != null) {
+            spotlightProgress.animateTo(1f, tween(300))
+        } else {
+            spotlightProgress.animateTo(0f, tween(200))
+        }
+    }
 
     // Scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -202,14 +214,17 @@ fun ChatScreen() {
             }
         }
 
-        // Spotlight overlay
-        if (selectedMessageId != null) {
-            val cutout = bubblePositions[selectedMessageId]
+        // Spotlight overlay — always in composition, driven by Animatable
+        if (spotlightProgress.value > 0f) {
+            val cutout = selectedMessageId?.let { bubblePositions[it] }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { overlayPosition = it.positionInWindow() }
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                        alpha = spotlightProgress.value
+                    }
                     .drawBehind {
                         if (cutout != null) {
                             drawRect(Color.White.copy(alpha = 0.5f))
@@ -231,12 +246,13 @@ fun ChatScreen() {
                     val density = LocalDensity.current
                     val localX = cutout.left - overlayPosition.x
                     val localY = cutout.top - overlayPosition.y
+                    val slideOffset = with(density) { (48.dp.toPx() * (1f - spotlightProgress.value)) }
                     Box(
                         modifier = Modifier
                             .offset {
                                 IntOffset(
                                     x = localX.toInt(),
-                                    y = (localY - with(density) { 48.dp.toPx() }).toInt()
+                                    y = (localY - with(density) { 48.dp.toPx() } + slideOffset).toInt()
                                 )
                             }
                             .width(with(density) { (cutout.width / density.density).dp })
