@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,8 +52,10 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mstf.tiktokchat.ui.theme.TikTokChatTheme
@@ -67,6 +70,8 @@ private fun avatarColor(name: String): Color {
     )
     return colors[name.hashCode().absoluteValue % colors.size]
 }
+
+private val reactionEmojis = listOf("\uD83D\uDC4D", "\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDE2E", "\uD83D\uDE22", "\uD83D\uDE4F")
 
 @Composable
 fun ChatScreen() {
@@ -87,6 +92,7 @@ fun ChatScreen() {
     var selectedMessageId by remember { mutableStateOf<String?>(null) }
     val bubblePositions = remember { mutableStateMapOf<String, Rect>() }
     var overlayPosition by remember { mutableStateOf(Offset.Zero) }
+    val reactions = remember { mutableStateMapOf<String, String>() }
 
     // Scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -112,6 +118,7 @@ fun ChatScreen() {
                     MessageBubble(
                         message = message,
                         showAvatar = !message.isMine && isLastInGroup,
+                        reaction = reactions[message.id],
                         onLongPress = { selectedMessageId = message.id },
                         onPositioned = { rect -> bubblePositions[message.id] = rect },
                         modifier = Modifier.padding(top = if (isNewGroup) 12.dp else 2.dp)
@@ -218,7 +225,54 @@ fun ChatScreen() {
                         }
                     }
                     .clickable { selectedMessageId = null }
-            )
+            ) {
+                // Emoji reaction bar above the selected bubble
+                if (cutout != null) {
+                    val density = LocalDensity.current
+                    val localX = cutout.left - overlayPosition.x
+                    val localY = cutout.top - overlayPosition.y
+                    Box(
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(
+                                    x = localX.toInt(),
+                                    y = (localY - with(density) { 48.dp.toPx() }).toInt()
+                                )
+                            }
+                            .width(with(density) { (cutout.width / density.density).dp })
+                            .align(Alignment.TopStart),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            shadowElevation = 4.dp,
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                reactionEmojis.forEach { emoji ->
+                                    Text(
+                                        text = emoji,
+                                        fontSize = 24.sp,
+                                        modifier = Modifier
+                                            .padding(horizontal = 6.dp)
+                                            .combinedClickable(
+                                                onClick = {
+                                                    reactions[selectedMessageId!!] = emoji
+                                                    selectedMessageId = null
+                                                },
+                                                onLongClick = {}
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -228,6 +282,7 @@ fun ChatScreen() {
 private fun MessageBubble(
     message: ChatMessage,
     showAvatar: Boolean,
+    reaction: String?,
     onLongPress: () -> Unit,
     onPositioned: (Rect) -> Unit,
     modifier: Modifier = Modifier
@@ -283,28 +338,52 @@ private fun MessageBubble(
         }
 
         // Message bubble
-        Box(
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .clip(bubbleShape)
-                .background(bubbleColor)
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            Column {
-                if (!message.isMine) {
+        Box {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 280.dp)
+                    .clip(bubbleShape)
+                    .background(bubbleColor)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Column {
+                    if (!message.isMine) {
+                        Text(
+                            text = message.senderName,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
                     Text(
-                        text = message.senderName,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = contentColor.copy(alpha = 0.7f)
+                        text = message.text,
+                        color = contentColor,
+                        fontSize = 16.sp
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
                 }
-                Text(
-                    text = message.text,
-                    color = contentColor,
-                    fontSize = 16.sp
-                )
+            }
+
+            // Reaction badge
+            if (reaction != null) {
+                val badgeAlign = if (message.isMine) Alignment.BottomStart else Alignment.BottomEnd
+                Surface(
+                    modifier = Modifier
+                        .align(badgeAlign)
+                        .offset(
+                            x = if (message.isMine) (-6).dp else 6.dp,
+                            y = 6.dp
+                        ),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 2.dp
+                ) {
+                    Text(
+                        text = reaction,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }
