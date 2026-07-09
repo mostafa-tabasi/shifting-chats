@@ -54,7 +54,9 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -62,6 +64,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mstf.tiktokchat.ui.theme.TikTokChatTheme
 import kotlin.math.absoluteValue
+import android.widget.Toast
+import androidx.compose.foundation.layout.IntrinsicSize
+import com.mstf.tiktokchat.R
 
 // Generate a consistent color from a name
 private fun avatarColor(name: String): Color {
@@ -287,6 +292,65 @@ fun ChatScreen() {
                             }
                         }
                     }
+
+                    // Action dialog below the selected bubble
+                    val context = LocalContext.current
+                    val actionItems = remember {
+                        listOf(
+                            Pair("Reply", R.drawable.ic_reply),
+                            Pair("Forward", R.drawable.ic_forward),
+                            Pair("Copy", R.drawable.ic_copy),
+                            Pair("Delete", R.drawable.ic_delete),
+                            Pair("Report", R.drawable.ic_flag)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(IntrinsicSize.Min)
+                            .offset {
+                                IntOffset(
+                                    x = localX.toInt(),
+                                    y = (localY + cutout.height.toInt() + with(density) { 8.dp.toPx() }).toInt()
+                                )
+                            }
+                            .align(Alignment.TopStart),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            shadowElevation = 4.dp,
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Column {
+                                actionItems.forEach { (label, icon) ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                Toast.makeText(context, label, Toast.LENGTH_SHORT).show()
+                                                selectedMessageId = null
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = icon),
+                                            contentDescription = label,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = label,
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                 }
             }
         }
