@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -295,6 +296,8 @@ fun ChatScreen() {
 
                     // Action dialog below the selected bubble
                     val context = LocalContext.current
+                    val selectedMessage = messages.find { it.id == selectedMessageId }
+                    val isMine = selectedMessage?.isMine ?: false
                     val actionItems = remember {
                         listOf(
                             Pair("Reply", R.drawable.ic_reply),
@@ -304,19 +307,25 @@ fun ChatScreen() {
                             Pair("Report", R.drawable.ic_flag)
                         )
                     }
+                    var dialogWidth by remember { mutableStateOf(0) }
                     Box(
                         modifier = Modifier
                             .width(IntrinsicSize.Min)
                             .offset {
+                                val x = if (isMine) {
+                                    (localX + cutout.width - dialogWidth).toInt()
+                                } else {
+                                    localX.toInt()
+                                }
                                 IntOffset(
-                                    x = localX.toInt(),
+                                    x = x,
                                     y = (localY + cutout.height.toInt() + with(density) { 8.dp.toPx() }).toInt()
                                 )
                             }
-                            .align(Alignment.TopStart),
-                        contentAlignment = Alignment.TopCenter
+                            .align(Alignment.TopStart)
                     ) {
                         Surface(
+                            modifier = Modifier.onSizeChanged { dialogWidth = it.width },
                             shape = RoundedCornerShape(12.dp),
                             shadowElevation = 4.dp,
                             color = MaterialTheme.colorScheme.surface
