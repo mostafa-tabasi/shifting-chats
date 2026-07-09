@@ -315,7 +315,7 @@ fun ChatScreen() {
                                 val x = if (isMine) {
                                     (localX + cutout.width - dialogWidth).toInt()
                                 } else {
-                                    localX.toInt()
+                                    (localX + with(density) { 44.dp.toPx() }).toInt()
                                 }
                                 IntOffset(
                                     x = x,
