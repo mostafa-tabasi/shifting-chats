@@ -1,6 +1,7 @@
 package com.mstf.tiktokchat.chat
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -61,6 +62,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mstf.tiktokchat.ui.theme.TikTokChatTheme
@@ -100,6 +102,7 @@ fun ChatScreen() {
     var selectedMessageId by remember { mutableStateOf<String?>(null) }
     val bubblePositions = remember { mutableStateMapOf<String, Rect>() }
     var overlayPosition by remember { mutableStateOf(Offset.Zero) }
+    var overlaySize by remember { mutableStateOf(IntSize.Zero) }
     val reactions = remember { mutableStateMapOf<String, String>() }
 
     val spotlightProgress = remember { Animatable(0f) }
@@ -109,6 +112,40 @@ fun ChatScreen() {
             spotlightProgress.animateTo(1f, tween(300))
         } else {
             spotlightProgress.animateTo(0f, tween(200))
+        }
+    }
+
+    var targetShiftPx by remember { mutableStateOf(0f) }
+    val animatedShiftPx by animateFloatAsState(targetValue = targetShiftPx, animationSpec = tween(300), label = "shift")
+    var lastSelectedId by remember { mutableStateOf<String?>(null) }
+
+    // Compute bubble shift to keep emoji bar / action dialog on screen
+    val density = LocalDensity.current
+    LaunchedEffect(selectedMessageId, overlaySize) {
+        if (selectedMessageId != null) {
+            val rect = bubblePositions[selectedMessageId]
+            if (rect != null && overlaySize != IntSize.Zero) {
+                val localY = rect.top - overlayPosition.y
+                val overlayHeight = overlaySize.height.toFloat()
+                val emojiRoom = with(density) { 56.dp.toPx() }
+                val dialogRoom = with(density) { 250.dp.toPx() }
+                val overflowTop = maxOf(0f, emojiRoom - localY)
+                val bottomY = localY + rect.height
+                val overflowBottom = maxOf(0f, dialogRoom - (overlayHeight - bottomY))
+                val shift = when {
+                    overflowTop > 0f && overflowBottom > 0f -> {
+                        val midY = (overlayHeight - rect.height) / 2f
+                        midY - localY
+                    }
+                    overflowTop > 0f -> overflowTop
+                    overflowBottom > 0f -> -overflowBottom
+                    else -> 0f
+                }
+                targetShiftPx = shift
+                lastSelectedId = selectedMessageId
+            }
+        } else {
+            targetShiftPx = 0f
         }
     }
 
@@ -139,6 +176,7 @@ fun ChatScreen() {
                         reaction = reactions[message.id],
                         onLongPress = { selectedMessageId = message.id },
                         onPositioned = { rect -> bubblePositions[message.id] = rect },
+                        selectedShiftPx = if (message.id == lastSelectedId) animatedShiftPx else 0f,
                         modifier = Modifier.padding(top = if (isNewGroup) 12.dp else 2.dp)
                     )
                 }
@@ -226,7 +264,7 @@ fun ChatScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .onGloballyPositioned { overlayPosition = it.positionInWindow() }
+                    .onGloballyPositioned { overlayPosition = it.positionInWindow(); overlaySize = it.size }
                     .graphicsLayer {
                         compositingStrategy = CompositingStrategy.Offscreen
                         alpha = spotlightProgress.value
@@ -374,6 +412,7 @@ private fun MessageBubble(
     reaction: String?,
     onLongPress: () -> Unit,
     onPositioned: (Rect) -> Unit,
+    selectedShiftPx: Float = 0f,
     modifier: Modifier = Modifier
 ) {
     val bubbleColor = if (message.isMine) {
@@ -405,6 +444,7 @@ private fun MessageBubble(
 
     Row(
         modifier = modifier
+            .offset { IntOffset(x = 0, y = selectedShiftPx.toInt()) }
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
                 val pos = coordinates.positionInWindow()
