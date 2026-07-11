@@ -1,6 +1,7 @@
 package com.mstf.tiktokchat.chat
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -46,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -66,6 +69,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mstf.tiktokchat.ui.theme.TikTokChatTheme
+import kotlinx.coroutines.delay
 import kotlin.math.absoluteValue
 import android.widget.Toast
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -106,18 +110,24 @@ fun ChatScreen() {
     val reactions = remember { mutableStateMapOf<String, String>() }
 
     val spotlightProgress = remember { Animatable(0f) }
+    var lastSelectedId by remember { mutableStateOf<String?>(null) }
+    var needsShiftOnDismiss by remember { mutableStateOf(false) }
 
     LaunchedEffect(selectedMessageId) {
         if (selectedMessageId != null) {
             spotlightProgress.animateTo(1f, tween(300))
         } else {
             spotlightProgress.animateTo(0f, tween(200))
+            if (needsShiftOnDismiss) {
+                delay(350)
+            }
+            lastSelectedId = null
+            needsShiftOnDismiss = false
         }
     }
 
     var targetShiftPx by remember { mutableStateOf(0f) }
     val animatedShiftPx by animateFloatAsState(targetValue = targetShiftPx, animationSpec = tween(300), label = "shift")
-    var lastSelectedId by remember { mutableStateOf<String?>(null) }
 
     // Compute bubble shift to keep emoji bar / action dialog on screen
     val density = LocalDensity.current
@@ -142,6 +152,7 @@ fun ChatScreen() {
                     else -> 0f
                 }
                 targetShiftPx = shift
+                needsShiftOnDismiss = shift != 0f
                 lastSelectedId = selectedMessageId
             }
         } else {
@@ -177,6 +188,7 @@ fun ChatScreen() {
                         onLongPress = { selectedMessageId = message.id },
                         onPositioned = { rect -> bubblePositions[message.id] = rect },
                         selectedShiftPx = if (message.id == lastSelectedId) animatedShiftPx else 0f,
+                        isSelected = message.id == lastSelectedId || message.id == selectedMessageId,
                         modifier = Modifier.padding(top = if (isNewGroup) 12.dp else 2.dp)
                     )
                 }
@@ -413,6 +425,7 @@ private fun MessageBubble(
     onLongPress: () -> Unit,
     onPositioned: (Rect) -> Unit,
     selectedShiftPx: Float = 0f,
+    isSelected: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val bubbleColor = if (message.isMine) {
@@ -444,6 +457,7 @@ private fun MessageBubble(
 
     Row(
         modifier = modifier
+            .zIndex(if (isSelected) 10f else 0f)
             .offset { IntOffset(x = 0, y = selectedShiftPx.toInt()) }
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
@@ -467,10 +481,16 @@ private fun MessageBubble(
         }
 
         // Message bubble
+        val shadowElevation by animateDpAsState(
+            targetValue = if (isSelected) 8.dp else 0.dp,
+            animationSpec = tween(300),
+            label = "shadow"
+        )
         Box {
             Box(
                 modifier = Modifier
                     .widthIn(max = 280.dp)
+                    .shadow(shadowElevation, bubbleShape)
                     .clip(bubbleShape)
                     .background(bubbleColor)
                     .padding(horizontal = 12.dp, vertical = 8.dp)
