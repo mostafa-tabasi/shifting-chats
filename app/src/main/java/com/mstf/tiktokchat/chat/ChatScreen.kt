@@ -49,11 +49,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -283,14 +286,56 @@ fun ChatScreen() {
                     }
                     .drawBehind {
                         if (cutout != null) {
+                            val msg = selectedMessageId?.let { id -> messages.find { it.id == id } }
+                            val localX = cutout.left - overlayPosition.x
+                            val localY = cutout.top - overlayPosition.y
+                            val radiusLarge = with(density) { 16.dp.toPx() }
+                            val radiusSmall = with(density) { 4.dp.toPx() }
+
+                            // Build cutout path matching bubble shape
+                            val path = Path().apply {
+                                if (msg != null && msg.isMine) {
+                                    // User bubble: topEnd=4, others=16
+                                    addRoundRect(
+                                        RoundRect(
+                                            left = localX, top = localY,
+                                            right = localX + cutout.width, bottom = localY + cutout.height,
+                                            topLeftCornerRadius = CornerRadius(radiusLarge),
+                                            topRightCornerRadius = CornerRadius(radiusSmall),
+                                            bottomLeftCornerRadius = CornerRadius(radiusLarge),
+                                            bottomRightCornerRadius = CornerRadius(radiusLarge)
+                                        )
+                                    )
+                                } else {
+                                    // Other party: topStart=4, others=16 + avatar circle
+                                    addRoundRect(
+                                        RoundRect(
+                                            left = localX, top = localY,
+                                            right = localX + cutout.width, bottom = localY + cutout.height,
+                                            topLeftCornerRadius = CornerRadius(radiusSmall),
+                                            topRightCornerRadius = CornerRadius(radiusLarge),
+                                            bottomLeftCornerRadius = CornerRadius(radiusLarge),
+                                            bottomRightCornerRadius = CornerRadius(radiusLarge)
+                                        )
+                                    )
+                                    // Avatar circle (36dp diameter, 4dp from cutout left edge)
+                                    val avatarSize = with(density) { 36.dp.toPx() }
+                                    val avatarMargin = with(density) { 4.dp.toPx() }
+                                    addOval(
+                                        androidx.compose.ui.geometry.Rect(
+                                            left = localX + avatarMargin,
+                                            top = localY,
+                                            right = localX + avatarMargin + avatarSize,
+                                            bottom = localY + avatarSize
+                                        )
+                                    )
+                                }
+                            }
+
                             drawRect(Color.White.copy(alpha = 0.5f))
-                            drawRect(
+                            drawPath(
+                                path = path,
                                 color = Color.Transparent,
-                                topLeft = Offset(
-                                    cutout.left - overlayPosition.x,
-                                    cutout.top - overlayPosition.y
-                                ),
-                                size = Size(cutout.width, cutout.height),
                                 blendMode = BlendMode.Clear
                             )
                         }
@@ -300,22 +345,26 @@ fun ChatScreen() {
                 // Emoji reaction bar above the selected bubble
                 if (cutout != null) {
                     val density = LocalDensity.current
+                    val selectedMessage = messages.find { it.id == selectedMessageId }
+                    val isMine = selectedMessage?.isMine ?: false
                     val localX = cutout.left - overlayPosition.x
                     val localY = cutout.top - overlayPosition.y
                     val slideOffset = with(density) { (48.dp.toPx() * (1f - spotlightProgress.value)) }
+                    var emojiBarWidth by remember { mutableStateOf(0) }
+                    val bubbleLeft = if (isMine) localX else localX + with(density) { 44.dp.toPx() }
+                    val bubbleWidth = if (isMine) cutout.width else cutout.width - with(density) { 44.dp.toPx() }
                     Box(
                         modifier = Modifier
                             .offset {
                                 IntOffset(
-                                    x = localX.toInt(),
+                                    x = (if (isMine) bubbleLeft + bubbleWidth - emojiBarWidth else bubbleLeft).toInt(),
                                     y = (localY - with(density) { 48.dp.toPx() } + slideOffset).toInt()
                                 )
                             }
-                            .width(with(density) { (cutout.width / density.density).dp })
-                            .align(Alignment.TopStart),
-                        contentAlignment = Alignment.TopCenter
+                            .align(Alignment.TopStart)
                     ) {
                         Surface(
+                            modifier = Modifier.onSizeChanged { emojiBarWidth = it.width },
                             shape = RoundedCornerShape(12.dp),
                             shadowElevation = 4.dp,
                             color = MaterialTheme.colorScheme.surface
@@ -346,8 +395,6 @@ fun ChatScreen() {
 
                     // Action dialog below the selected bubble
                     val context = LocalContext.current
-                    val selectedMessage = messages.find { it.id == selectedMessageId }
-                    val isMine = selectedMessage?.isMine ?: false
                     val actionItems = remember {
                         listOf(
                             Pair("Reply", R.drawable.ic_reply),
@@ -362,10 +409,12 @@ fun ChatScreen() {
                         modifier = Modifier
                             .width(IntrinsicSize.Min)
                             .offset {
+                                val bubbleLeft = if (isMine) localX else localX + with(density) { 44.dp.toPx() }
+                                val bubbleWidth = if (isMine) cutout.width else cutout.width - with(density) { 44.dp.toPx() }
                                 val x = if (isMine) {
-                                    (localX + cutout.width - dialogWidth).toInt()
+                                    (bubbleLeft + bubbleWidth - dialogWidth).toInt()
                                 } else {
-                                    (localX + with(density) { 44.dp.toPx() }).toInt()
+                                    bubbleLeft.toInt()
                                 }
                                 IntOffset(
                                     x = x,
@@ -455,16 +504,13 @@ private fun MessageBubble(
         )
     }
 
+    val avatarPx = with(LocalDensity.current) { 44.dp.toPx() }
+
     Row(
         modifier = modifier
             .zIndex(if (isSelected) 10f else 0f)
             .offset { IntOffset(x = 0, y = selectedShiftPx.toInt()) }
             .fillMaxWidth()
-            .onGloballyPositioned { coordinates ->
-                val pos = coordinates.positionInWindow()
-                val size = coordinates.size
-                onPositioned(Rect(pos.x, pos.y, pos.x + size.width, pos.y + size.height))
-            }
             .combinedClickable(
                 onClick = {},
                 onLongClick = onLongPress
@@ -486,7 +532,14 @@ private fun MessageBubble(
             animationSpec = tween(300),
             label = "shadow"
         )
-        Box {
+        Box(
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                val pos = coordinates.positionInWindow()
+                val size = coordinates.size
+                val left = if (message.isMine) pos.x else pos.x - avatarPx
+                onPositioned(Rect(left, pos.y, pos.x + size.width, pos.y + size.height))
+            }
+        ) {
             Box(
                 modifier = Modifier
                     .widthIn(max = 280.dp)
