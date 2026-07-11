@@ -332,7 +332,7 @@ fun ChatScreen() {
                                 }
                             }
 
-                            drawRect(Color.White.copy(alpha = 0.5f))
+                            drawRect(Color.White.copy(alpha = 0.75f))
                             drawPath(
                                 path = path,
                                 color = Color.Transparent,
@@ -527,11 +527,6 @@ private fun MessageBubble(
         }
 
         // Message bubble
-        val shadowElevation by animateDpAsState(
-            targetValue = if (isSelected) 8.dp else 0.dp,
-            animationSpec = tween(300),
-            label = "shadow"
-        )
         Box(
             modifier = Modifier.onGloballyPositioned { coordinates ->
                 val pos = coordinates.positionInWindow()
@@ -543,7 +538,6 @@ private fun MessageBubble(
             Box(
                 modifier = Modifier
                     .widthIn(max = 280.dp)
-                    .shadow(shadowElevation, bubbleShape)
                     .clip(bubbleShape)
                     .background(bubbleColor)
                     .padding(horizontal = 12.dp, vertical = 8.dp)
