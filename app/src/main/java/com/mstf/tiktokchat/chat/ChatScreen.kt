@@ -97,14 +97,20 @@ fun ChatScreen() {
             ChatMessage("1", "Hey! How are you?", isMine = false, senderName = "Alice"),
             ChatMessage("2", "I'm good, thanks! What about you?", isMine = true, senderName = "Me"),
             ChatMessage("3", "Doing great! Want to grab coffee later?", isMine = false, senderName = "Alice"),
-            ChatMessage("4", "Sure, sounds like a plan!", isMine = true, senderName = "Me")
+            ChatMessage("4", "Sure, sounds like a plan!", isMine = true, senderName = "Me"),
+            ChatMessage("5", "How about 3pm at the usual spot?", isMine = false, senderName = "Alice"),
+            ChatMessage("6", "Perfect, see you there \uD83D\uDC4B", isMine = true, senderName = "Me"),
+            ChatMessage("7", "Btw, did you finish the project?", isMine = false, senderName = "Alice"),
+            ChatMessage("8", "Almost done! Just polishing a few things.", isMine = true, senderName = "Me"),
+            ChatMessage("9", "Awesome, can't wait to see it!", isMine = false, senderName = "Alice"),
+            ChatMessage("10", "Thanks! I'll show you the demo soon.", isMine = true, senderName = "Me")
         )
     }
 
     var inputText by remember { mutableStateOf("") }
     var senderIsMe by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
-    var messageCounter by remember { mutableStateOf(5) }
+    var messageCounter by remember { mutableStateOf(10) }
 
     var selectedMessageId by remember { mutableStateOf<String?>(null) }
     val bubblePositions = remember { mutableStateMapOf<String, Rect>() }
